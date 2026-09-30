@@ -1,0 +1,197 @@
+// CFA-4 rules engine: turns a list of entries into the numbers, schedule rows and flags for one report.
+// Based on State Form 4606 (R18 / 6-25) and the 2026 Indiana Campaign Finance Manual (R/7-26).
+// Works in the browser (window.CFA) and in Node (module.exports).
+
+(function (root) {
+  const ITEMIZE_OVER = 100;          // IC 3-9-5-14: itemize when a source's calendar-year total exceeds $100
+  const OCCUPATION_AT = 1000;        // occupation required when an individual gives $1,000+ in the calendar year
+  const CORP_LABOR_LIMIT = 2000;     // IC 3-9-2-4: $2,000/yr from a corporation or union, shared across ALL county/local candidates
+  const LARGE_CONTRIB = 1000;        // CFA-11 "48-hour" report threshold
+
+  const PERIODS_2026 = {
+    "Pre-Primary":  { start: "2026-01-01", end: "2026-04-10", due: "2026-04-17", supp: ["2026-04-11", "2026-05-03"] },
+    "Pre-Election": { start: "2026-04-11", end: "2026-10-09", due: "2026-10-16", supp: ["2026-10-10", "2026-11-01"] },
+    "Annual":       { start: "2026-10-10", end: "2026-12-31", due: "2027-01-20" },
+  };
+
+  // Where each kind of money-in lands on Schedule A
+  const SOURCE_SCHEDULE = { individual: "A1", candidate: "A1", corporation: "A2", labor: "A3", pac: "A4", committee: "A5", other: "A5" };
+  const RECEIPT_KINDS = ["contribution", "inkind", "loan", "interest", "misc"];
+  const EXPENSE_KINDS = ["expense", "debt_payment", "refund", "transfer_out"];
+
+  const num = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const inRange = (d, a, b) => d && d >= a && d <= b;
+  const yearOf = (d) => (d || "").slice(0, 4);
+
+  function addressLines(e) {
+    const street = e.street || e.address || "";
+    const csz = [e.city, [e.state, e.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    return [street, csz].filter(Boolean);
+  }
+
+  function compute(report) {
+    const P = report.period || PERIODS_2026[report.reportType] || {};
+    const start = report.start || P.start, end = report.end || P.end, year = yearOf(end);
+    const all = (report.entries || []).filter((e) => yearOf(e.date) === year || !e.date);
+    const flags = [];
+    const flag = (sev, ids, msg, fix) => flags.push({ sev, ids: [].concat(ids || []), msg, fix });
+
+    const receipts = all.filter((e) => RECEIPT_KINDS.includes(e.kind));
+    const expenses = all.filter((e) => EXPENSE_KINDS.includes(e.kind) || e.kind === "inkind");
+    const byDate = (a, b) => (a.date || "").localeCompare(b.date || "");
+
+    // ---------- Receipts (Schedule A) ----------
+    const srcKey = (e) => norm(e.name) + "|" + (SOURCE_SCHEDULE[e.source] || "A5");
+    const ytd = {};
+    receipts.filter((e) => e.date && e.date <= end).forEach((e) => { ytd[srcKey(e)] = num((ytd[srcKey(e)] || 0) + num(e.amount)); });
+    const alwaysItemize = (e) => e.source === "committee" || (e.source === "pac" && (e.kind === "inkind" || e.transfer));
+
+    const sched = { A1: [], A2: [], A3: [], A4: [], A5: [], B: [], D: [], E: [] };
+    let rec = { itA: 0, unA: 0, itPrior: 0, unPrior: 0 };
+    const running = {};
+    const priorYtd = {};
+    receipts.filter((e) => e.date && e.date < start).forEach((e) => { priorYtd[srcKey(e)] = num((priorYtd[srcKey(e)] || 0) + num(e.amount)); });
+
+    for (const e of receipts.slice().sort(byDate)) {
+      const k = srcKey(e), amt = num(e.amount);
+      if (!e.date) { flag("must_fix", e.id, `${e.name || "An entry"} (${money(amt)}) has no date.`, "Add the date it was deposited in the campaign account."); continue; }
+      running[k] = num((running[k] || 0) + amt);
+      if (e.date < start) { // prior period: only needed for year-to-date columns
+        if (priorYtd[k] > ITEMIZE_OVER || alwaysItemize(e)) rec.itPrior += amt; else rec.unPrior += amt;
+        continue;
+      }
+      if (e.date > end) continue; // belongs on the next report
+      const itemized = ytd[k] > ITEMIZE_OVER || alwaysItemize(e);
+      if (!itemized) { rec.unA += amt; continue; }
+      rec.itA += amt;
+      const s = SOURCE_SCHEDULE[e.source] || "A5";
+      sched[s].push({
+        id: e.id, name: e.name, address: addressLines(e), occupation: e.occupation || "",
+        type: e.kind === "contribution" ? "direct" : e.kind, desc: e.desc || "",
+        colA: amt, colB: running[k], date: e.date, receivedBy: e.receivedBy || "",
+      });
+      // Itemized-entry requirements
+      if (!e.name) flag("must_fix", e.id, `A ${money(amt)} ${label(e)} has no name.`, "Enter the contributor's full name.");
+      if (addressLines(e).length < 2 || !e.zip) flag("must_fix", e.id, `${e.name} gave ${money(ytd[k])} this year, so their full mailing address is required.`, "Add street, city, state and ZIP.");
+      if (!e.receivedBy) flag("must_fix", e.id, `Who received ${e.name}'s ${money(amt)} ${label(e)}?`, "Enter the committee member who received it (usually the treasurer or candidate).");
+      if ((e.source === "individual" || e.source === "candidate") && ytd[k] >= OCCUPATION_AT && !e.occupation)
+        flag("must_fix", e.id, `${e.name} gave ${money(ytd[k])} this year. Donors who give $1,000 or more must list an occupation.`, "Add a real job title, like “attorney” or “retired” (not “consultant”).");
+      if (e.kind === "inkind" && !e.desc) flag("must_fix", e.id, `The in-kind gift from ${e.name} doesn't say what was given.`, "Describe it, like “yard signs” or “food for fundraiser.”");
+      if (e.kind === "misc" && !e.desc) flag("must_fix", e.id, `The ${money(amt)} from ${e.name} is marked “other” without saying what it was.`, "Describe it, like “refund from printer” or “sale of shirts.”");
+    }
+
+    // Corporation and union limits (shared by all county, local and school board candidates)
+    for (const [k, total] of Object.entries(ytd)) {
+      const [nm, s] = k.split("|");
+      if ((s === "A2" || s === "A3") && total > CORP_LABOR_LIMIT) {
+        const ids = receipts.filter((e) => srcKey(e) === k).map((e) => e.id);
+        flag("must_fix", ids, `${s === "A2" ? "Corporation" : "Union"} “${nm}” gave you ${money(total)} this year. The legal limit is ${money(CORP_LABOR_LIMIT)} a year, and that limit is shared across every county and local candidate they give to.`, `Refund at least ${money(total - CORP_LABOR_LIMIT)} and report the refund as a returned contribution.`);
+      }
+    }
+
+    // CFA-11 48-hour report for large contributions in the supplemental window
+    if (report.checkLargeContributions && P.supp) {
+      const win = {};
+      receipts.filter((e) => inRange(e.date, P.supp[0], P.supp[1])).forEach((e) => { win[srcKey(e)] = num((win[srcKey(e)] || 0) + num(e.amount)); });
+      for (const [k, t] of Object.entries(win)) if (t >= LARGE_CONTRIB) {
+        const ids = receipts.filter((e) => srcKey(e) === k && inRange(e.date, P.supp[0], P.supp[1])).map((e) => e.id);
+        const who = receipts.find((e) => e.id === ids[0]).name;
+        flag("must_fix", ids, `${who} gave ${money(t)} between ${fmt(P.supp[0])} and ${fmt(P.supp[1])}. That requires a CFA-11 “large contribution” report within 48 hours of receiving it.`, "File a CFA-11 with the county election board now (email, fax or in person). It will also go on your next CFA-4.");
+      }
+    }
+
+    // ---------- Expenditures (Schedule B) ----------
+    // In-kind contributions are entered twice: once as money in (Schedule A) and once as money out (Schedule B).
+    const outRows = expenses.map((e) => e.kind === "inkind"
+      ? { ...e, kind: "inkind_out", code: e.code || guessCode(e.desc), purpose: e.desc || "", recipient: e.name }
+      : { ...e, recipient: e.name });
+    const payKey = (e) => norm(e.recipient);
+    const expYtd = {};
+    outRows.filter((e) => e.date && e.date <= end).forEach((e) => { expYtd[payKey(e)] = num((expYtd[payKey(e)] || 0) + num(e.amount)); });
+    const expPriorYtd = {};
+    outRows.filter((e) => e.date && e.date < start).forEach((e) => { expPriorYtd[payKey(e)] = num((expPriorYtd[payKey(e)] || 0) + num(e.amount)); });
+    let exp = { itA: 0, unA: 0, itPrior: 0, unPrior: 0 };
+    const runOut = {};
+    for (const e of outRows.slice().sort(byDate)) {
+      const k = payKey(e), amt = num(e.amount);
+      if (!e.date) { if (e.kind !== "inkind_out") flag("must_fix", e.id, `The ${money(amt)} payment to ${e.recipient || "someone"} has no date.`, "Add the date the check was mailed or the payment was made."); continue; }
+      runOut[k] = num((runOut[k] || 0) + amt);
+      const always = e.kind === "transfer_out" || e.code === "C";
+      if (e.date < start) { if (expPriorYtd[k] > ITEMIZE_OVER || always) exp.itPrior += amt; else exp.unPrior += amt; continue; }
+      if (e.date > end) continue;
+      if (!(expYtd[k] > ITEMIZE_OVER || always)) { exp.unA += amt; continue; }
+      exp.itA += amt;
+      const type = { expense: "direct", transfer_out: "direct", inkind_out: "inkind", debt_payment: "debt", refund: "refund" }[e.kind] || "other";
+      sched.B.push({
+        id: e.id, code: e.code || "", recipient: e.recipient, address: addressLines(e),
+        occupation: e.occupation || "", office: e.office || "", type, otherDesc: e.otherDesc || "",
+        purpose: e.purpose || e.desc || "", colA: amt, colB: runOut[k], date: e.date,
+      });
+      if (!e.code) flag("must_fix", e.id, `The ${money(amt)} payment to ${e.recipient} needs an expenditure code.`, "Pick A (advertising), F (fundraising), O (operations) or C (contribution to another campaign or group). A missing code makes the report defective.");
+      if (!(e.purpose || e.desc)) flag("must_fix", e.id, `The ${money(amt)} payment to ${e.recipient} doesn't say what it was for.`, "Be specific, like “yard signs” or “filing fee.”");
+      if (addressLines(e).length < 2 && e.kind !== "inkind_out") flag("must_fix", e.id, `${e.recipient} was paid ${money(expYtd[k])} this year, so their mailing address is required.`, "Add street, city, state and ZIP.");
+      if (/visa|mastercard|american express|amex|discover|capital one|chase card|credit card/i.test(e.recipient || ""))
+        flag("check", e.id, `“${e.recipient}” looks like a credit card company.`, "List the business you actually bought from, not the card company.");
+    }
+
+    // ---------- Debts (Schedules D and E) ----------
+    const debts = (report.debts || []).concat(receipts.filter((e) => e.kind === "loan").map((e) => ({
+      id: "loan-" + e.id, fromEntry: e.id, creditor: e.name, address: addressLines(e), occupation: e.occupation,
+      amount: e.amount, nature: "Loan", date: e.date,
+    })));
+    for (const d of debts) {
+      if (d.date && d.date > end) continue;
+      const paid = num(d.paidYtd != null ? d.paidYtd : all.filter((x) => x.kind === "debt_payment" && x.debtId === d.id && x.date && x.date <= end).reduce((s, x) => s + num(x.amount), 0));
+      const bal = num(num(d.amount) - num(d.paidBefore) - paid);
+      if (bal <= 0 && !(d.date && d.date >= start)) continue; // paid off before this period
+      sched.D.push({ id: d.id, creditor: d.creditor, address: d.address || addressLines(d), occupation: d.occupation || "", vendor: d.vendor || "", amount: num(d.amount), nature: d.nature || "", date: d.date, paidYtd: paid, balance: Math.max(bal, 0) });
+      if (!d.nature) flag("must_fix", d.id, `The debt to ${d.creditor} needs a description.`, "Say what kind of debt it is, like “loan,” “unpaid invoice” or “committee credit card.”");
+    }
+    for (const d of report.owedTo || []) {
+      const bal = num(num(d.amount) - num(d.paidYtd));
+      sched.E.push({ id: d.id, borrower: d.borrower, address: d.address || [], cosigner: d.cosigner || "", amount: num(d.amount), nature: d.nature || "Loan", date: d.date, paidYtd: num(d.paidYtd), balance: bal });
+    }
+
+    // ---------- Summary sheet ----------
+    const prior = report.prior || {};
+    const recB = { it: num(prior.rec15aB ?? rec.itPrior) + num(rec.itA), un: num(prior.rec15bB ?? rec.unPrior) + num(rec.unA) };
+    const expB = { it: num(prior.exp17aB ?? exp.itPrior) + num(exp.itA), un: num(prior.exp17bB ?? exp.unPrior) + num(exp.unA) };
+    const L = {};
+    L.l13 = num(report.cashBegin); L.l14 = num(report.cashJan1);
+    L.l15aA = num(rec.itA); L.l15bA = num(rec.unA); L.l15cA = num(L.l15aA + L.l15bA);
+    L.l15aB = num(recB.it); L.l15bB = num(recB.un); L.l15cB = num(L.l15aB + L.l15bB);
+    L.l16A = num(L.l13 + L.l15cA); L.l16B = num(L.l14 + L.l15cB);
+    L.l17aA = num(exp.itA); L.l17bA = num(exp.unA); L.l17cA = num(L.l17aA + L.l17bA);
+    L.l17aB = num(expB.it); L.l17bB = num(expB.un); L.l17cB = num(L.l17aB + L.l17bB);
+    L.l18A = num(L.l16A - L.l17cA); L.l18B = num(L.l16B - L.l17cB);
+    L.l19 = num(sched.D.reduce((s, d) => s + d.balance, 0));
+    L.l20 = num(sched.E.reduce((s, d) => s + d.balance, 0));
+
+    if (L.l18A < 0) flag("must_fix", [], `Ending cash comes out to ${money(L.l18A)}.`, "You can't spend more than you had. Look for a missing deposit, or an expense entered twice.");
+    if (Math.abs(L.l18A - L.l18B) > 0.009) flag("must_fix", [], `Line 18 doesn't match in both columns (${money(L.l18A)} vs ${money(L.l18B)}).`, "Your starting cash, January 1 cash, or earlier-report totals don't line up. Check them against your last report.");
+    if (report.bankBalance != null && report.bankBalance !== "" && Math.abs(num(report.bankBalance) - L.l18A) > 0.009)
+      flag("check", [], `Your bank balance on ${fmt(end)} was ${money(report.bankBalance)}, but the report ends at ${money(L.l18A)}.`, `The ${money(num(report.bankBalance) - L.l18A)} difference usually means a missing deposit, fee or check.`);
+    const online = receipts.some((e) => /online|actblue|paypal|venmo|stripe|square|anedot|winred|card/i.test(e.method || ""));
+    if (online && !outRows.some((e) => /fee/i.test((e.purpose || "") + (e.desc || "") + (e.recipient || ""))))
+      flag("check", [], "You took donations online but no processing fees are listed.", "Report each donation at the full amount before fees, and report the fees as an expense (code O).");
+    for (const e of all) if (e.date && e.date > end && e.date <= (report.today || "9999"))
+      flag("tip", e.id, `${e.name || "An entry"} on ${fmt(e.date)} is after this report ends (${fmt(end)}).`, "It's saved and will go on your next report.");
+
+    return { start, end, due: P.due, lines: L, schedules: sched, flags };
+  }
+
+  function guessCode(text) {
+    const t = String(text || "").toLowerCase();
+    if (/sign|shirt|button|sticker|ad\b|ads|advert|print|flyer|literature|mailer|postcard|website|web|radio|tv|newspaper|billboard|door hanger|palm card/.test(t)) return "A";
+    if (/fundrais|catering|caterer|food|pizza|restaurant|venue|hall rental|drinks|refreshment|speaker|band|entertain/.test(t)) return "F";
+    if (/donation to|contribution to|sponsorship|transfer to|party dues/.test(t)) return "C";
+    return "O";
+  }
+  const label = (e) => ({ contribution: "contribution", inkind: "in-kind gift", loan: "loan", interest: "interest payment", misc: "receipt" }[e.kind] || "entry");
+  function money(n) { return (Number(n) || 0).toLocaleString("en-US", { style: "currency", currency: "USD" }); }
+  function fmt(d) { if (!d) return ""; const [y, m, dd] = d.split("-"); return `${m}/${dd}/${y.slice(2)}`; }
+
+  const api = { compute, guessCode, money, fmt, PERIODS_2026, SOURCE_SCHEDULE, ITEMIZE_OVER, OCCUPATION_AT, CORP_LABOR_LIMIT };
+  if (typeof module !== "undefined") module.exports = api; else root.CFA = api;
+})(typeof window !== "undefined" ? window : globalThis);
