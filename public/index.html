@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Campaign Finance Helper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<!-- Start screen: new report or continue -->
+<section id="startView" class="start" hidden>
+  <div class="startbox">
+    <h1>Campaign Finance Helper</h1>
+    <p class="lead">Build your CFA-4 campaign finance report one step at a time. Your work saves as you go, so you can stop and come back whenever you want.</p>
+    <div class="startgrid">
+      <form class="panel" id="resumeForm">
+        <h2>Continue my report</h2>
+        <label for="resumeCode">Your report code<small>9 letters and numbers, like 7KQ-M2P-X9D</small>
+          <input id="resumeCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXX-XXX-XXX"></label>
+        <button class="btn" type="submit">Open my report</button>
+        <p class="err" id="resumeErr" hidden></p>
+      </form>
+      <form class="panel" id="newForm">
+        <h2>Start a new report</h2>
+        <label for="signupCode">Sign-up code<small>From whoever sent you this link</small>
+          <input id="signupCode" autocomplete="off"></label>
+        <button class="btn ghost" type="submit">Start</button>
+        <p class="err" id="newErr" hidden></p>
+      </form>
+    </div>
+    <div class="row"><button class="linkbtn" type="button" id="restoreBtn">Restore from a backup file</button><input type="file" id="restoreIn" accept=".json,application/json" hidden></div>
+  </div>
+</section>
+
+<!-- Main app -->
+<div id="appView" hidden>
+  <header class="topbar">
+    <div class="topin">
+      <b class="brand">Campaign Finance Helper</b>
+      <span class="save" id="saveState" role="status" aria-live="polite"></span>
+      <button class="btn ghost small" type="button" id="showCodeBtn">My code: <span id="codeLabel"></span></button>
+    </div>
+  </header>
+  <div class="notice" id="conflictBar" hidden><p>This report was changed on another device or tab. <button class="btn small" type="button" id="reloadBtn">Load the newest version</button></p></div>
+  <div class="wrap">
+    <aside class="rail">
+      <div class="who" id="whoLine"></div>
+      <ol class="steps" id="steps"></ol>
+      <div class="progress" id="progressBox"></div>
+    </aside>
+    <main id="main"></main>
+  </div>
+</div>
+
+<dialog id="editDlg"><form id="editForm" method="dialog"></form></dialog>
+<dialog id="codeDlg"><div class="dlgbody" id="codeBody"></div></dialog>
+
+<script src="/lib/compute.js"></script>
+<script src="/lib/fill.js"></script>
+<script src="/lib/pdf-lib.min.js" defer></script>
+<script src="/lib/xlsx.full.min.js" defer></script>
+<script src="/app.js"></script>
+</body>
+</html>
