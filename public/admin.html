@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Finance Helper Drafts</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div style="max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:28px;display:flex;flex-direction:column;gap:18px">
+  <div><h1 style="font-size:28px">Candidate drafts</h1><p class="lead">Every report in progress. Open one to see exactly what the candidate sees. Any change you make saves to their report, so avoid editing while they're working in it.</p></div>
+  <form class="panel row" id="login"><label for="ac" style="flex:1;min-width:200px">Helper code<input id="ac" type="password" autocomplete="current-password"></label><button class="btn" type="submit">Show drafts</button><span class="err" id="err" hidden></span></form>
+  <div class="tablewrap" id="tbl" hidden></div>
+</div>
+<script>
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const when = (t) => t ? new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+async function load(code) {
+  const r = await fetch("/api/admin", { headers: { "X-Admin-Code": code } });
+  const j = await r.json();
+  if (!r.ok) { document.getElementById("err").textContent = j.error; document.getElementById("err").hidden = false; return; }
+  try { sessionStorage.setItem("cfh-admin", code); } catch (e) {}
+  document.getElementById("login").hidden = true;
+  const t = document.getElementById("tbl"); t.hidden = false;
+  t.innerHTML = `<table><thead><tr><th>Candidate</th><th>Committee</th><th>Report</th><th class="amt">Entries</th><th>To fix</th><th>Step</th><th>Last saved</th><th>Code</th></tr></thead><tbody>
+    ${j.drafts.map((d) => `<tr><td>${esc(d.candidate) || '<span class="muted">not entered yet</span>'}</td><td>${esc(d.committee)}</td><td>${esc(d.report)}</td><td class="amt">${d.entries ?? 0}</td>
+      <td>${d.mustFix == null ? "" : d.mustFix ? `<span class="pill bad">${d.mustFix}</span>` : '<span class="pill ok">0</span>'}</td><td>${esc(d.step)}</td><td>${when(d.updatedAt)}</td>
+      <td><a href="/r/${esc(d.code)}" target="_blank" rel="noopener">${esc(d.code)}</a></td></tr>`).join("") || '<tr><td colspan="8" class="empty">No drafts yet.</td></tr>'}
+  </tbody></table>`;
+}
+document.getElementById("login").addEventListener("submit", (e) => { e.preventDefault(); load(document.getElementById("ac").value); });
+try { const c = sessionStorage.getItem("cfh-admin"); if (c) load(c); } catch (e) {}
+</script>
+</body>
+</html>
