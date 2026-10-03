@@ -253,7 +253,6 @@ function supportPanel() {
 }
 function wireLanding() {
   document.querySelectorAll("[data-venmo]").forEach((a) => { if (CFG.venmo) a.href = venmoUrl(); else a.closest(".support")?.remove(); });
-  document.querySelectorAll("[data-venmo-amounts]").forEach((d) => { d.innerHTML = "Quick links: " + SUGGESTED.map((n) => `<a href="${venmoUrl(n)}" target="_blank" rel="noopener">$${n}</a>`).join("") + `<a href="${venmoUrl()}" target="_blank" rel="noopener">any amount</a>`; });
   document.querySelectorAll("[data-contact]").forEach((a) => { if (CFG.contactEmail) a.href = `mailto:${CFG.contactEmail}?subject=${encodeURIComponent("Tally for our county")}`; else a.closest(".spread")?.remove(); });
 }
 
@@ -288,6 +287,7 @@ async function wireSignup() {
   }
 }
 $("#toSignup")?.addEventListener("click", (e) => { e.preventDefault(); $("#signup").scrollIntoView({ behavior: "smooth" }); setTimeout(() => $("#su-candidate").focus(), 400); });
+document.addEventListener("change", (e) => { if (e.target.name === "su-where") $("#su-county-label").textContent = e.target.value === "state" ? "County you live in" : "County where you file"; });
 $("#signupForm")?.addEventListener("submit", async (e) => {
   e.preventDefault(); const err = $("#su-err"); err.hidden = true;
   const v = (id) => ($("#su-" + id)?.value || "").trim();
@@ -299,7 +299,8 @@ $("#signupForm")?.addEventListener("submit", async (e) => {
     const r = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json(); if (!r.ok) throw new Error(j.error || "Something went wrong.");
     CODE = j.code; REV = 0; S = blank(); S.step = "about";
-    Object.assign(S.about, { candidate: body.candidate, committee: body.committee, office: body.office, county: body.county, phone: body.phone });
+    const where = document.querySelector('input[name="su-where"]:checked')?.value === "state" ? "state" : "county";
+    Object.assign(S.about, { candidate: body.candidate, committee: body.committee, office: body.office, county: body.county, phone: body.phone, filesWith: where });
     history.replaceState(null, "", "/r/" + CODE);
     showApp(); changed(); showCode(true);
   } catch (x) { err.textContent = x.message; err.hidden = false; window.turnstile?.reset?.(); }

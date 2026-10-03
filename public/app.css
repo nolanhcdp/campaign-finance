@@ -274,3 +274,7 @@ td .q{margin-top:6px}
 .fixlist p.warn{border-left-color:var(--warn);background:var(--warn-soft)}
 label.need{color:var(--bad)}
 label.need input,label.need select{border:2px solid var(--bad);background:var(--bad-soft)}
+
+.su-where{grid-column:1/-1;border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:8px}
+.su-where legend{font-size:14px;font-weight:600;margin-bottom:8px;padding:0}
+.su-where small{color:var(--muted);font-size:12px}
