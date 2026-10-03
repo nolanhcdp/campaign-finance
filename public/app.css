@@ -266,3 +266,11 @@ td .q{margin-top:6px}
 .tnote{color:var(--muted);font-size:12px}
 .sheet .pill{white-space:normal;display:inline-block}
 .sheetdemo .btn{text-decoration:none}
+
+.needs{font-size:12px;font-weight:600;margin-top:4px}
+.needs.bad{color:var(--bad)}.needs.warn{color:var(--warn)}
+.fixlist{display:flex;flex-direction:column;gap:6px;margin:0 0 4px}
+.fixlist p{margin:0;font-size:14px;padding:8px 10px;border-radius:7px;border-left:4px solid var(--bad);background:var(--bad-soft)}
+.fixlist p.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+label.need{color:var(--bad)}
+label.need input,label.need select{border:2px solid var(--bad);background:var(--bad-soft)}

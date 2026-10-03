@@ -63,7 +63,7 @@
     const ledgerFrom = report.ledgerFrom || `${year}-01-01`;   // entries before this were already counted in report.prior
     const all = (report.entries || []).filter((e) => yearOf(e.date) === year || !e.date);
     const flags = [];
-    const flag = (sev, ids, msg, fix) => flags.push({ sev, ids: [].concat(ids || []), msg, fix });
+    const flag = (sev, ids, msg, fix, fields) => flags.push({ sev, ids: [].concat(ids || []), msg, fix, fields: fields || [] });
 
     const receipts = all.filter((e) => RECEIPT_KINDS.includes(e.kind));
     const expenses = all.filter((e) => EXPENSE_KINDS.includes(e.kind) || e.kind === "inkind");
@@ -87,7 +87,7 @@
 
     for (const e of receipts.slice().sort(byDate)) {
       const k = srcKey(e), amt = num(e.amount);
-      if (!e.date) { flag("must_fix", e.id, `${e.name || "An entry"} (${money(amt)}) has no date.`, "Add the date you received it."); continue; }
+      if (!e.date) { flag("must_fix", e.id, `${e.name || "An entry"} (${money(amt)}) has no date.`, "Add the date you received it.", ["date"]); continue; }
       running[k] = num((running[k] || 0) + amt);
       if (e.date < start) { // earlier this year: only needed for year-to-date columns
         if (e.date < ledgerFrom) continue;  // already inside the typed numbers from the last report
@@ -105,15 +105,15 @@
         colA: amt, colB: running[k], date: e.date, receivedBy: e.receivedBy || "",
       });
       // Itemized-entry requirements
-      if (!e.name) flag("must_fix", e.id, `A ${money(amt)} ${label(e)} has no name.`, "Enter the contributor's full name.");
-      if ((addressLines(e).length < 2 || !e.zip) && (ytd[k] > ITEMIZE_OVER || alwaysItemize(e))) flag("must_fix", e.id, `${e.name} gave ${money(ytd[k])} this year, so their full mailing address is required.`, "Add street, city, state and ZIP.");
-      else if (addressLines(e).length < 2 || !e.zip) flag("check", e.id, `${e.name}'s address is incomplete.`, "Add the ZIP or city so the entry is complete, or leave it and it still prints as itemized.");
-      if (!e.receivedBy) flag("must_fix", e.id, `Who received ${e.name}'s ${money(amt)} ${label(e)}?`, "Enter the committee member who received it (usually the treasurer or candidate).");
+      if (!e.name) flag("must_fix", e.id, `A ${money(amt)} ${label(e)} has no name.`, "Enter the contributor's full name.", ["name"]);
+      if ((addressLines(e).length < 2 || !e.zip) && (ytd[k] > ITEMIZE_OVER || alwaysItemize(e))) flag("must_fix", e.id, `${e.name} gave ${money(ytd[k])} this year, so their full mailing address is required.`, "Add street, city, state and ZIP.", ["street", "city", "state", "zip"]);
+      else if (addressLines(e).length < 2 || !e.zip) flag("check", e.id, `${e.name}'s address is incomplete.`, "Add the ZIP or city so the entry is complete, or leave it and it still prints as itemized.", ["street", "city", "zip"]);
+      if (!e.receivedBy) flag("must_fix", e.id, `Who received ${e.name}'s ${money(amt)} ${label(e)}?`, "Enter the committee member who received it (usually the treasurer or candidate).", ["receivedBy"]);
       if ((e.source === "individual" || e.source === "candidate") && ytd[k] >= OCCUPATION_AT && !e.occupation)
-        flag("must_fix", e.id, `${e.name} gave ${money(ytd[k])} this year. Donors who give $1,000 or more must list an occupation.`, "Add a real job title, like “attorney” or “retired” (not “consultant”).");
-      if (/^\s*consultant\s*$/i.test(e.occupation || "")) flag("check", e.id, `${e.name}'s occupation is listed as “consultant,” which the form instructions say isn't specific enough.`, "Use what they actually do, like “marketing consultant” or “IT consultant.”");
-      if (e.kind === "inkind" && !e.desc) flag("must_fix", e.id, `The in-kind gift from ${e.name} doesn't say what was given.`, "Describe it, like “yard signs” or “food for fundraiser.”");
-      if (e.kind === "misc" && !e.desc) flag("must_fix", e.id, `The ${money(amt)} from ${e.name} is marked “other” without saying what it was.`, "Describe it, like “refund from printer” or “sale of shirts.”");
+        flag("must_fix", e.id, `${e.name} gave ${money(ytd[k])} this year. Donors who give $1,000 or more must list an occupation.`, "Add a real job title, like “attorney” or “retired” (not “consultant”).", ["occupation"]);
+      if (/^\s*consultant\s*$/i.test(e.occupation || "")) flag("check", e.id, `${e.name}'s occupation is listed as “consultant,” which the form instructions say isn't specific enough.`, "Use what they actually do, like “marketing consultant” or “IT consultant.”", ["occupation"]);
+      if (e.kind === "inkind" && !e.desc) flag("must_fix", e.id, `The in-kind gift from ${e.name} doesn't say what was given.`, "Describe it, like “yard signs” or “food for fundraiser.”", ["desc"]);
+      if (e.kind === "misc" && !e.desc) flag("must_fix", e.id, `The ${money(amt)} from ${e.name} is marked “other” without saying what it was.`, "Describe it, like “refund from printer” or “sale of shirts.”", ["desc"]);
     }
 
     // Corporation and union limits (shared by all county, local and school board candidates)
@@ -151,7 +151,7 @@
     const runOut = {};
     for (const e of outRows.slice().sort(byDate)) {
       const k = payKey(e), amt = num(e.amount);
-      if (!e.date) { if (e.kind !== "inkind_out") flag("must_fix", e.id, `The ${money(amt)} payment to ${e.recipient || "someone"} has no date.`, "Add the date the check was mailed or the payment was made."); continue; }
+      if (!e.date) { if (e.kind !== "inkind_out") flag("must_fix", e.id, `The ${money(amt)} payment to ${e.recipient || "someone"} has no date.`, "Add the date the check was mailed or the payment was made.", ["date"]); continue; }
       runOut[k] = num((runOut[k] || 0) + amt);
       const always = e.kind === "transfer_out" || e.code === "C";
       const payeeInfo = !!(e.recipient && (e.street || e.address) && (e.zip || e.city));
@@ -165,11 +165,11 @@
         occupation: e.occupation || "", office: e.office || "", type, otherDesc: e.otherDesc || "",
         purpose: e.purpose || e.desc || "", colA: amt, colB: runOut[k], date: e.date,
       });
-      if (!e.code) flag("must_fix", e.id, `The ${money(amt)} payment to ${e.recipient} needs an expenditure code.`, "Pick A (advertising), F (fundraising), O (operations) or C (contribution to another campaign or group). A missing code makes the report defective.");
-      if (!(e.purpose || e.desc)) flag("must_fix", e.id, `The ${money(amt)} payment to ${e.recipient} doesn't say what it was for.`, "Be specific, like “yard signs” or “filing fee.”");
-      if (addressLines(e).length < 2 && e.kind !== "inkind_out" && (expYtd[k] > ITEMIZE_OVER || always)) flag("must_fix", e.id, `${e.recipient} was paid ${money(expYtd[k])} this year, so their mailing address is required.`, "Add street, city, state and ZIP.");
+      if (!e.code) flag("must_fix", e.id, `The ${money(amt)} payment to ${e.recipient} needs an expenditure code.`, "Pick A (advertising), F (fundraising), O (operations) or C (contribution to another campaign or group). A missing code makes the report defective.", ["code"]);
+      if (!(e.purpose || e.desc)) flag("must_fix", e.id, `The ${money(amt)} payment to ${e.recipient} doesn't say what it was for.`, "Be specific, like “yard signs” or “filing fee.”", ["purpose"]);
+      if (addressLines(e).length < 2 && e.kind !== "inkind_out" && (expYtd[k] > ITEMIZE_OVER || always)) flag("must_fix", e.id, `${e.recipient} was paid ${money(expYtd[k])} this year, so their mailing address is required.`, "Add street, city, state and ZIP.", ["street", "city", "state", "zip"]);
       if (/visa|mastercard|american express|amex|discover|capital one|chase card|credit card/i.test(e.recipient || ""))
-        flag("check", e.id, `“${e.recipient}” looks like a credit card company.`, "List the business you actually bought from, not the card company.");
+        flag("check", e.id, `“${e.recipient}” looks like a credit card company.`, "List the business you actually bought from, not the card company.", ["name"]);
     }
 
     // ---------- Debts (Schedules D and E) ----------

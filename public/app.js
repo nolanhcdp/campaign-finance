@@ -363,10 +363,10 @@ function results(rep = curReport()) {
   for (const e of S.entries) {
     if (!inPeriod(e, rep) && e.kind !== "unpaid_bill") continue;   // other reports' entries are checked on their own report
     if (e.question) extra.push({ sev: "check", ids: [e.id], msg: e.question, fix: "Open the entry, fix anything needed, and save it to clear this." });
-    if (!(Number(e.amount) > 0)) extra.push({ sev: "must_fix", ids: [e.id], msg: `${e.name || "An entry"} has no amount.`, fix: "Enter the dollar amount." });
-    if (KINDS[e.kind]?.group === "in" && !e.source) extra.push({ sev: "must_fix", ids: [e.id], msg: `What kind of donor is ${e.name || "this"}: a person, a corporation, an LLC, a union, a PAC?`, fix: "The form has a separate page for each kind. Use the “Sort your donors” buttons on the Check Each Entry step.", step: "list" });
-    if (e.sourceGuessed && e.source) extra.push({ sev: "check", ids: [e.id], msg: `We filed ${e.name} as ${({ corporation: "a corporation", other: "an LLC or other business", labor: "a union", pac: "a PAC", committee: "a party or candidate committee" })[e.source] || e.source} because ${e.sourceGuessed}.`, fix: "If that's right, nothing to do. If not, open the entry and change “Who are they?”" });
-    if (e.codeGuessed && e.code && KINDS[e.kind]?.group === "out") extra.push({ sev: "check", ids: [e.id], msg: `We coded the ${money(e.amount)} payment to ${e.name || "this vendor"} as O (operations) because “${e.purpose || "no purpose given"}” didn't tell us more.`, fix: "Change the code if it was advertising (A), a fundraiser cost (F) or a gift to another campaign (C)." });
+    if (!(Number(e.amount) > 0)) extra.push({ sev: "must_fix", ids: [e.id], msg: `${e.name || "An entry"} has no amount.`, fix: "Enter the dollar amount.", fields: ["amount"] });
+    if (KINDS[e.kind]?.group === "in" && !e.source) extra.push({ sev: "must_fix", ids: [e.id], msg: `What kind of donor is ${e.name || "this"}: a person, a corporation, an LLC, a union, a PAC?`, fix: "The form has a separate page for each kind. Use the “Sort your donors” buttons on the Check Each Entry step.", step: "list", fields: ["source"] });
+    if (e.sourceGuessed && e.source) extra.push({ sev: "check", ids: [e.id], msg: `We filed ${e.name} as ${({ corporation: "a corporation", other: "an LLC or other business", labor: "a union", pac: "a PAC", committee: "a party or candidate committee" })[e.source] || e.source} because ${e.sourceGuessed}.`, fix: "If that's right, nothing to do. If not, open the entry and change “Who are they?”", fields: ["source"] });
+    if (e.codeGuessed && e.code && KINDS[e.kind]?.group === "out") extra.push({ sev: "check", ids: [e.id], msg: `We coded the ${money(e.amount)} payment to ${e.name || "this vendor"} as O (operations) because “${e.purpose || "no purpose given"}” didn't tell us more.`, fix: "Change the code if it was advertising (A), a fundraiser cost (F) or a gift to another campaign (C).", fields: ["code"] });
   }
   const a = S.about;
   for (const [k, l] of [["committee", "committee name"], ["candidate", "candidate name"], ["office", "office sought"], ["treasurer", "treasurer's name"], ["street", "mailing address"], ["city", "city"], ["zip", "ZIP code"]])
@@ -389,8 +389,15 @@ function results(rep = curReport()) {
   if (bk.actblue && Math.abs(bk.actblue.deposits - bk.actblue.net) > 2) extra.push({ sev: "check", ids: [], msg: `ActBlue deposited ${money(bk.actblue.deposits)} to your bank in this stretch, but your ActBlue entries net to ${money(bk.actblue.net)} after fees and refunds.`, fix: "Usually a timing difference at the edges of the statement, or an export that's out of date. Re-download your ActBlue export and upload it again." });
   const ai = (S.aiFlags || []).filter((f) => f.reportId === rep.id || !f.reportId).map((f) => ({ sev: f.severity, ids: f.item_ids || [], msg: f.message, fix: f.fix, ai: true }));
   const order = { must_fix: 0, check: 1, tip: 2 };
-  const seenMsg = new Set();
-  const flags = [...C.flags, ...extra, ...ai].filter((f) => !S.dismissed[f.sev + "|" + f.msg]).filter((f) => { const k = f.sev + "|" + f.msg; if (seenMsg.has(k)) return false; seenMsg.add(k); return true; }).sort((x, y) => order[x.sev] - order[y.sev]);
+  // One line per cause: the same message for several entries becomes one flag that points at all of them.
+  const byMsg = new Map();
+  for (const f of [...C.flags, ...extra, ...ai]) {
+    const k = f.sev + "|" + f.msg; if (S.dismissed[k]) continue;
+    const have = byMsg.get(k);
+    if (have) { have.ids = [...new Set([...(have.ids || []), ...(f.ids || [])])]; have.fields = [...new Set([...(have.fields || []), ...(f.fields || [])])]; }
+    else byMsg.set(k, { ...f, ids: [...(f.ids || [])] });
+  }
+  const flags = [...byMsg.values()].sort((x, y) => order[x.sev] - order[y.sev]);
   return { C, flags };
 }
 
@@ -614,7 +621,7 @@ list() {
   const later = S.entries.filter(isLater).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const rowHtml = (e) => `<tr><td>${fmtDate(e.date)}</td><td>${KINDS[e.kind]?.label || e.kind}</td>
     <td>${esc(e.name) || "<span class='pill bad'>missing</span>"}<div class="src">${esc(e.sourceFile ? "from " + e.sourceFile : "typed in")}</div></td>
-    <td>${esc([SOURCES[e.source] && KINDS[e.kind]?.group === "in" ? SOURCES[e.source] : "", e.code ? "Code " + e.code : "", e.purpose || e.desc, e.occupation].filter(Boolean).join(" · "))}${e.question ? `<div class="q">${esc(e.question)}</div>` : ""}</td>
+    <td>${esc([SOURCES[e.source] && KINDS[e.kind]?.group === "in" ? SOURCES[e.source] : "", e.code ? "Code " + e.code : "", e.purpose || e.desc, e.occupation].filter(Boolean).join(" · "))}${e.question ? `<div class="q">${esc(e.question)}</div>` : ""}${needsLine(e.id)}</td>
     <td class="amt">${money(e.amount)}</td>
     <td>${flagged.has(e.id) ? '<span class="pill bad">fix</span>' : e.question ? '<span class="pill warn">check</span>' : '<span class="pill ok">ok</span>'} <button class="btn ghost small" type="button" data-edit="${e.id}">Edit</button></td></tr>`;
   const earlierBlock = earlier.length ? `<details class="tipsbox panel"><summary>${earlier.length} entr${earlier.length === 1 ? "y" : "ies"} from earlier this year (not on this report)</summary>
@@ -1396,6 +1403,20 @@ function fillSamePerson(e) {
     if (!o.street && e.street) Object.assign(o, { street: e.street, city: e.city, state: e.state, zip: e.zip });
   }
 }
+// What still needs doing on one entry: the flags that point at it, and the fields they're about.
+const FIELD_NAMES = { name: "name", amount: "amount", date: "date", street: "street address", city: "city", state: "state", zip: "ZIP", occupation: "job", receivedBy: "who received it", desc: "description", purpose: "what it was for", code: "expense code", source: "kind of donor" };
+function entryNeeds(id) {
+  const rep = curReport(); if (!rep) return { flags: [], fields: [] };
+  const flags = results(rep).flags.filter((f) => (f.ids || []).includes(id) && f.sev !== "tip");
+  const e = S.entries.find((x) => x.id === id) || {};
+  // For an address, only point at the parts that are actually blank.
+  const all = [...new Set(flags.flatMap((f) => f.fields || []))], isAddr = (k) => ["street", "city", "state", "zip"].includes(k);
+  const blankAddr = all.filter((k) => isAddr(k) && !e[k]);
+  const fields = all.filter((k) => !isAddr(k)).concat(blankAddr.length ? blankAddr : all.filter(isAddr).slice(0, 1));
+  return { flags, fields };
+}
+const needsLine = (id) => { const n = entryNeeds(id); const bad = n.flags.some((f) => f.sev === "must_fix"); const list = n.fields.map((k) => FIELD_NAMES[k] || k); return list.length ? `<div class="needs ${bad ? "bad" : "warn"}">${bad ? "Needs" : "Check"}: ${esc(list.join(", "))}</div>` : ""; };
+
 // ---------- Edit dialog ----------
 function openEdit(id, presetKind, prefill) {
   const orig = id ? S.entries.find((e) => e.id === id) : null;
@@ -1409,7 +1430,9 @@ function openEdit(id, presetKind, prefill) {
     const debts = {};
     S.entries.filter((e) => e.kind === "loan" || e.kind === "unpaid_bill").forEach((e) => (debts[e.id.startsWith("prior") ? e.id : (e.kind === "loan" ? "loan-" + e.id : e.id)] = `${e.name} — ${money(e.amount)}`));
     S.priorDebts.forEach((d) => (debts[d.id] = `${d.creditor} — ${money(d.amount)}`));
+    const need = orig ? entryNeeds(orig.id) : { flags: [], fields: [] };
     $("#editForm").innerHTML = `<h3>${orig ? "Edit this entry" : "Add an entry"}</h3>
+    ${need.flags.length ? `<div class="fixlist">${need.flags.map((f) => `<p class="${f.sev === "must_fix" ? "bad" : "warn"}"><b>${esc(f.msg)}</b> ${esc(f.fix || "")}</p>`).join("")}</div>` : ""}
     ${x.question ? `<div class="q">${esc(x.question)}</div>` : ""}
     <div class="grid">${sel("kind", "What is it?", Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.label])))}${f("amount", "Amount ($)", "number")}${f("date", g === "in" ? "Date received" : g === "owed" ? "Date billed" : "Date paid", "date")}</div>
     <div class="grid">${f("name", g === "in" ? "Who gave it" : g === "owed" ? "Who you owe" : "Who was paid", "text", "full name or business name")}${g === "in" ? sel("source", "Who are they?", SOURCES) : ""}</div>
@@ -1420,6 +1443,8 @@ function openEdit(id, presetKind, prefill) {
     <div id="lookupRow"></div>
     <p class="codehelp">${g === "out" ? "Not sure about the code? Signs, printing and ads are A. Event costs are F. Fees, postage and supplies are O." : ""}</p>
     <div class="nav">${orig ? `<button class="btn ghost" value="delete" type="submit">Delete</button>` : "<span></span>"}<div class="row"><button class="btn ghost" value="cancel" type="submit">Cancel</button><button class="btn" value="save" type="submit">Save</button></div></div>`;
+    for (const k of need.fields) { const el = $("#e_" + k); if (el) { el.closest("label")?.classList.add("need"); el.addEventListener("input", () => el.closest("label")?.classList.remove("need"), { once: true }); } }
+    const firstNeed = need.fields.map((k) => $("#e_" + k)).find(Boolean); if (firstNeed) setTimeout(() => firstNeed.focus(), 50);
     $("#e_kind").addEventListener("change", () => { Object.assign(x, formData()); draw(); });
     $("#e_date")?.addEventListener("change", () => { const was = !!$("#e_time"); Object.assign(x, formData()); if (was !== inSuppWindow(x.date)) draw(); });
     const pc = $("#e_purpose"), cd = $("#e_code");
