@@ -582,7 +582,7 @@ add() {
     <div class="chips"><span class="chip">ActBlue export</span><span class="chip">Phone photos</span><span class="chip">PDF</span><span class="chip">Excel / CSV</span><span class="chip">Screenshots</span></div>
     <input id="fileIn" type="file" multiple hidden accept="image/*,.pdf,.csv,.tsv,.txt,.xlsx,.xls"></label>
   ${files}
-  ${isDemo() && !S.files.some((f) => f.name === "messy-donations.xlsx") ? `<div class="panel row" style="justify-content:space-between"><span><b>No spreadsheet handy?</b> <span class="muted">Try a messy one like most treasurers keep.</span></span><button class="btn small" type="button" data-act="samplesheet">Import a sample spreadsheet</button></div>` : ""}
+  ${isDemo() && !S.files.some((f) => f.name === "messy-donations.xlsx") ? `<div class="panel row" style="justify-content:space-between"><span><b>No spreadsheet handy?</b> <span class="muted">Try importing a sample one.</span></span><button class="btn small" type="button" data-act="samplesheet">Import a sample spreadsheet</button></div>` : ""}
   <details class="tipsbox panel" ${S.files.some((f) => f.ab) ? "" : "open"}>
     <summary>Raise money on ActBlue? Get all of it in three steps.</summary>
     <ol class="abguide">
