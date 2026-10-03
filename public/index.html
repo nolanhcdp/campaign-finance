@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Tally — campaign finance reports for local candidates</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<!-- Settings you can change by hand. -->
+<script>
+window.CFH = {
+  venmo: "nborn510",
+  contactEmail: "nborn510@gmail.com",
+  corpCheck: false,
+  // Where each county's candidates file. Shown on the "How to file" step. Add a county when one signs up.
+  counties: {
+    "Howard": { office: "Howard County Clerk, Election Office", address: "", email: "", phone: "", note: "" }
+  }
+};
+</script>
+
+<!-- Start screen / landing page -->
+<section id="startView" class="start" hidden>
+  <div class="land">
+
+    <div class="hero">
+      <div class="herotext">
+        <div class="logo"><svg class="mark" width="48" height="36" viewBox="0 0 64 48" fill="none" stroke="#0f766e" stroke-linecap="round" aria-hidden="true" style="color:#0f766e"><g stroke-width="6"><path d="M10 6v36"/><path d="M24 6v36"/><path d="M38 6v36"/><path d="M52 6v36"/></g><path d="M4 40 60 8" stroke-width="7.5"/></svg><span>Tally</span></div>
+        <h1>Tally builds your CFA-4 from what you already have.</h1>
+        <p class="lead big">Type in donations and expenses, or upload your ActBlue download, a spreadsheet, or photos of checks and receipts. Tally puts each one on the right schedule, checks it against Indiana's rules, and fills in the official form for you to sign. No password to remember.</p>
+      </div>
+      <div class="panel opencard">
+        <form id="resumeForm">
+          <h2>Open my report</h2>
+          <label for="resumeCode">Your report code<small>9 letters and numbers, like 7KQ-M2P-X9D. It's in the message that sent you here.</small>
+            <input id="resumeCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXX-XXX-XXX"></label>
+          <button class="btn" type="submit">Open my report</button>
+          <p class="err" id="resumeErr" hidden></p>
+        </form>
+        <p class="newhere">New to Tally? <a href="#signup" id="toSignup">Set up your committee</a> in about a minute, or <a href="/demo">try a sample campaign</a> first.</p>
+        <details class="morelinks">
+          <summary>Have a sign-up code or a backup file?</summary>
+          <form id="newForm" class="newform">
+            <label for="signupCode">Sign-up code<small>Ask whoever runs this tool for your county</small>
+              <input id="signupCode" autocomplete="off"></label>
+            <button class="btn ghost small" type="submit">Start a new report</button>
+            <p class="err" id="newErr" hidden></p>
+          </form>
+          <button class="linkbtn" type="button" id="restoreBtn">Restore from a backup file</button><input type="file" id="restoreIn" accept=".json,application/json" hidden>
+        </details>
+      </div>
+    </div>
+
+    <section class="demo" id="demo">
+      <div class="demohead">
+        <h2>See it work before you sign up</h2>
+        <p>Open a sample campaign with made-up donors and click around. Add a donation, fix what Tally flags, and download the finished form. Nothing you do there is saved.</p>
+        <div class="row"><a class="btn" href="/demo">Open the sample campaign</a><a class="linkbtn" href="/samples/sample-CFA-4.pdf" target="_blank" rel="noopener">See a finished CFA-4</a></div>
+      </div>
+      <div class="panel sheetdemo">
+        <h3>A messy sheet, sorted</h3>
+        <p class="muted" style="margin:4px 0 12px">The kind of donation list most treasurers keep, and what Tally does with each row.</p>
+        <div class="sheetwrap"><table class="sheet">
+          <thead><tr><th class="rn"></th><th>A</th><th>B</th><th>C</th><th>D</th><th class="tcol">Tally</th></tr></thead>
+          <tbody>
+            <tr class="skip"><td class="rn">1</td><td colspan="4"><b>Dana for Council - money in, summer 2026</b></td><td class="tcol"><span class="tnote">Title line skipped</span></td></tr>
+            <tr class="hdr"><td class="rn">2</td><td>Who</td><td>How much</td><td>When</td><td>Notes</td><td class="tcol"><span class="tnote">Columns recognized</span></td></tr>
+            <tr><td class="rn">3</td><td>Jim Harper</td><td>$150.00</td><td>6/12/2026</td><td>check 1102</td><td class="tcol"><span class="pill ok">Schedule A-1</span></td></tr>
+            <tr><td class="rn">4</td><td>Rita Ochoa</td><td>600</td><td>7/4/2026</td><td>cash at the picnic</td><td class="tcol"><span class="pill ok">Schedule A-1</span></td></tr>
+            <tr class="skip"><td class="rn">5</td><td>Jim Harper</td><td>$150.00</td><td>6/12/2026</td><td>check 1102</td><td class="tcol"><span class="tnote">Same check twice, skipped</span></td></tr>
+            <tr><td class="rn">6</td><td>James Harper</td><td>100</td><td>8/3/2026</td><td>ck 1150</td><td class="tcol"><span class="pill warn">Same person as Jim? Asks you</span></td></tr>
+            <tr><td class="rn">7</td><td>Wildcat Creek Hardware Inc</td><td>250</td><td>8/15/2026</td><td>business check</td><td class="tcol"><span class="pill ok">Corporation, Schedule A-2</span></td></tr>
+            <tr class="skip"><td class="rn">8</td><td></td><td></td><td></td><td></td><td class="tcol"><span class="tnote">Blank row skipped</span></td></tr>
+            <tr><td class="rn">9</td><td>Dana Whitcomb (me)</td><td>500</td><td>9/1/2026</td><td>loan to the campaign</td><td class="tcol"><span class="pill ok">Your own loan, owed back on Schedule D</span></td></tr>
+            <tr><td class="rn">10</td><td>Rita Ochoa</td><td>500</td><td>9/20/2026</td><td>check 2210</td><td class="tcol"><span class="pill bad">$1,100 this year: needs her job</span></td></tr>
+            <tr class="skip"><td class="rn">11</td><td><b>TOTAL</b></td><td><b>$2,372.00</b></td><td></td><td></td><td class="tcol"><span class="tnote">Total row skipped</span></td></tr>
+          </tbody></table></div>
+        <div class="row" style="margin-top:14px"><a class="btn" href="/demo?import=sample">Watch Tally sort it</a><span class="hint">Opens the sample campaign and imports this sheet.</span></div>
+      </div>
+      <div class="demogrid">
+        <div class="panel">
+          <h3>What it catches</h3>
+          <p class="muted" style="margin:4px 0 12px">The kinds of things county election boards send reports back for.</p>
+          <div class="flags">
+            <div class="flag bad"><div class="bar"></div><div><b>Rita Ochoa gave $1,100.00 this year. Donors who give $1,000 or more must list an occupation.</b></div></div>
+            <div class="flag bad"><div class="bar"></div><div><b>Gloria Banks gave $150.00 this year, so their full mailing address is required.</b></div></div>
+            <div class="flag bad"><div class="bar"></div><div><b>Corporation “Wildcat Creek Hardware Inc” gave you $2,250.00 this year. The legal limit is $2,000.00 a year.</b></div></div>
+            <div class="flag warn"><div class="bar"></div><div><b>Check #1004 is $58.00 in your report but $85.00 at the bank.</b></div></div>
+            <div class="flag warn"><div class="bar"></div><div><b>Jim Harper and James Harper may be the same person.</b></div></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>One ActBlue gift, reported right</h3>
+          <p class="muted" style="margin:4px 0 12px">Your bank sees $48.02. The state wants the full gift as a contribution and ActBlue's fee as a campaign expense.</p>
+          <div class="abpair">
+            <div class="abside"><span class="ablabel">Your ActBlue export</span>
+              <div class="abrow mono"><span>08/14/2026</span><span>Ben Okafor</span><span>50.00</span><span>fee 1.98</span></div></div>
+            <div class="abarrow" aria-hidden="true">↓</div>
+            <div class="abside"><span class="ablabel">Schedule A-1, contributions</span>
+              <div class="abrow"><span><b>Ben Okafor</b><br>1203 W. Jefferson St, Kokomo, IN 46901 · Mechanic</span><span>Direct · 08/14/26</span><span class="mono">$50.00</span></div></div>
+            <div class="abside"><span class="ablabel">Schedule B, expenditures</span>
+              <div class="abrow"><span><b>ActBlue Technical Services</b><br>Code O · processing fees, August (one line for the month)</span><span>08/31/26</span><span class="mono">$4.33</span></div></div>
+          </div>
+          <p class="hint" style="margin:12px 0 0">Upload the export and Tally does both, plus any refunds.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel signup" id="signup">
+      <div class="signuptext">
+        <h2>Start using Tally</h2>
+        <p>Tell us who the committee is and you'll get a code that opens your books from any phone or computer. Free to use; chip in later if it helps.</p>
+        <p class="hint">Your email is only used to help you if you lose your code. It's never shared or used for anything else.</p>
+      </div>
+      <form id="signupForm" class="signupform" novalidate>
+        <label for="su-candidate">Candidate's name<input id="su-candidate" autocomplete="name" required></label>
+        <label for="su-committee">Committee name<small>as on your CFA-1, like “Friends of Pat Smith”</small><input id="su-committee" required></label>
+        <label for="su-office">Office you're running for<small>include the district, if there is one</small><input id="su-office"></label>
+        <label for="su-county">County where you file<select id="su-county" required><option value="">Choose a county</option><option>Adams</option><option>Allen</option><option>Bartholomew</option><option>Benton</option><option>Blackford</option><option>Boone</option><option>Brown</option><option>Carroll</option><option>Cass</option><option>Clark</option><option>Clay</option><option>Clinton</option><option>Crawford</option><option>Daviess</option><option>Dearborn</option><option>Decatur</option><option>DeKalb</option><option>Delaware</option><option>Dubois</option><option>Elkhart</option><option>Fayette</option><option>Floyd</option><option>Fountain</option><option>Franklin</option><option>Fulton</option><option>Gibson</option><option>Grant</option><option>Greene</option><option>Hamilton</option><option>Hancock</option><option>Harrison</option><option>Hendricks</option><option>Henry</option><option>Howard</option><option>Huntington</option><option>Jackson</option><option>Jasper</option><option>Jay</option><option>Jefferson</option><option>Jennings</option><option>Johnson</option><option>Knox</option><option>Kosciusko</option><option>LaGrange</option><option>Lake</option><option>LaPorte</option><option>Lawrence</option><option>Madison</option><option>Marion</option><option>Marshall</option><option>Martin</option><option>Miami</option><option>Monroe</option><option>Montgomery</option><option>Morgan</option><option>Newton</option><option>Noble</option><option>Ohio</option><option>Orange</option><option>Owen</option><option>Parke</option><option>Perry</option><option>Pike</option><option>Porter</option><option>Posey</option><option>Pulaski</option><option>Putnam</option><option>Randolph</option><option>Ripley</option><option>Rush</option><option>St. Joseph</option><option>Scott</option><option>Shelby</option><option>Spencer</option><option>Starke</option><option>Steuben</option><option>Sullivan</option><option>Switzerland</option><option>Tippecanoe</option><option>Tipton</option><option>Union</option><option>Vanderburgh</option><option>Vermillion</option><option>Vigo</option><option>Wabash</option><option>Warren</option><option>Warrick</option><option>Washington</option><option>Wayne</option><option>Wells</option><option>White</option><option>Whitley</option></select></label>
+        <label for="su-email">Email<input id="su-email" type="email" autocomplete="email" required></label>
+        <label for="su-phone">Phone <small>optional</small><input id="su-phone" type="tel" autocomplete="tel"></label>
+        <label class="hp" aria-hidden="true">Website<input id="su-website" tabindex="-1" autocomplete="off"></label>
+        <div id="su-turnstile"></div>
+        <button class="btn" type="submit" id="su-btn">Create my committee</button>
+        <p class="err" id="su-err" hidden></p>
+      </form>
+    </section>
+
+    <section class="how">
+      <h2>How it works</h2>
+      <div class="how3">
+        <div><span class="numchip">1</span><h3>Tell Tally what happened</h3><p>Type in donations and expenses one at a time, or upload what you have: an ActBlue download, a spreadsheet, photos of checks and receipts. Tally sorts everything onto the right schedule.</p></div>
+        <div><span class="numchip">2</span><h3>Fix what's flagged</h3><p>A missing address, a donor over the limit, an expense that needs a receipt. Every rule in the state manual is checked, and you can ask a question in plain English any time.</p></div>
+        <div><span class="numchip">3</span><h3>Download, sign, file</h3><p>Get the official form filled in, every schedule and total included. Print it, sign it, and turn it in to your county clerk before the deadline.</p></div>
+      </div>
+    </section>
+
+    <section class="facts">
+      <div class="panel"><b>Saves as you go</b><p>Close the tab, come back next week on your phone. Your report is right where you left it.</p></div>
+      <div class="panel"><b>Knows the rules</b><p>Itemizing, the $100 line, the $2,000 corporate limit, in-kind gifts, ActBlue fees, year-to-date totals.</p></div>
+      <div class="panel"><b>Private</b><p>Only someone with your code can open your report. Nothing is sold or shared. Treat your code like a key.</p></div>
+    </section>
+
+    <section class="support panel">
+      <div class="supporttext">
+        <h2>Chip in if you can</h2>
+        <p>I built Tally on my own time so local candidates don't have to pay someone, or guess, to file a clean report. It isn't free to run: every report costs money to host and process. If it saved you an evening, send what feels fair.</p>
+      </div>
+      <div class="supportact">
+        <a class="btn" data-venmo href="#" target="_blank" rel="noopener">Chip in on Venmo</a>
+        <div class="amounts" data-venmo-amounts></div>
+      </div>
+    </section>
+
+    <section class="spread">
+      <h2>Other counties</h2>
+      <p>Tally works for any local candidate in Indiana who files a CFA-4. If you want your county's candidates on it, <a data-contact href="#">email me</a>.</p>
+    </section>
+
+    <footer class="landfoot">
+      <p>Tally is a volunteer project and is not affiliated with the Indiana Election Division or any county election board. The report is only as good as what you enter. When in doubt, ask your county clerk.</p>
+    </footer>
+  </div>
+</section>
+
+<!-- Main app -->
+<div id="appView" hidden>
+  <header class="topbar">
+    <div class="topin">
+      <b class="brand"><svg class="mark" width="24" height="18" viewBox="0 0 64 48" fill="none" stroke="#0f766e" stroke-linecap="round" aria-hidden="true"><g stroke-width="6"><path d="M10 6v36"/><path d="M24 6v36"/><path d="M38 6v36"/><path d="M52 6v36"/></g><path d="M4 40 60 8" stroke-width="7.5"/></svg>Tally</b>
+      <span class="save" id="saveState" role="status" aria-live="polite"></span>
+      <button class="btn ghost small" type="button" id="showCodeBtn">My code: <span id="codeLabel"></span></button>
+    </div>
+  </header>
+  <div class="notice demobar" id="demoBar" hidden><p>This is a sample campaign with made-up donors. Nothing you do here is saved. <a class="btn small" href="/#signup">Set up your own committee</a> <a class="linkbtn" href="/">Back to the main page</a></p></div>
+  <div class="notice" id="conflictBar" hidden><p>This report was changed on another device or tab. <button class="btn small" type="button" id="reloadBtn">Load the newest version</button></p></div>
+  <div class="wrap">
+    <aside class="rail">
+      <div class="who" id="whoLine"></div>
+      <ol class="steps" id="steps"></ol>
+      <div class="progress" id="progressBox"></div>
+    </aside>
+    <main id="main"></main>
+  </div>
+</div>
+
+<dialog id="editDlg"><form id="editForm" method="dialog"></form></dialog>
+<dialog id="codeDlg"><div class="dlgbody" id="codeBody"></div></dialog>
+
+<script src="/lib/compute.js"></script>
+<script src="/lib/fill.js"></script>
+<script src="/lib/fill11.js"></script>
+<script src="/lib/sample.js"></script>
+<script src="/lib/state-export.js"></script>
+<script src="/lib/pdf-lib.min.js" defer></script>
+<script src="/lib/xlsx.full.min.js" defer></script>
+<script src="/app.js"></script>
+</body>
+</html>
