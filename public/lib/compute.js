@@ -3,7 +3,7 @@
 // Works in the browser (window.CFA) and in Node (module.exports).
 
 (function (root) {
-  const ITEMIZE_OVER = 100;          // IC 3-9-5-14: itemize when a source's calendar-year total exceeds $100
+  const ITEMIZE_OVER_CANDIDATE = 100; // IC 3-9-5-14: itemize when a source's calendar-year total exceeds $100 ($200 for party committees)
   const OCCUPATION_AT = 1000;        // occupation required when an individual gives $1,000+ in the calendar year
   const CORP_LABOR_LIMIT = 2000;     // IC 3-9-2-4: $2,000/yr from a corporation or union, shared across ALL county/local candidates
   const LARGE_CONTRIB = 1000;        // CFA-11 "48-hour" report threshold
@@ -20,8 +20,15 @@
   function annualDue(year) { const d = new Date(Date.UTC(year + 1, 0, 1)); const dow = d.getUTCDay(); const first = 1 + ((3 - dow + 7) % 7); return `${year + 1}-01-${String(first + 14).padStart(2, "0")}`; }
   // The reports a committee owes in a year. Running for office in a year with a published calendar → that calendar;
   // otherwise just the annual report, which every open committee files whether or not it was on the ballot.
-  function periodsFor(year, running) {
+  // Regular party committees file their annual report by noon on March 1 (moved to the next weekday when it falls on a weekend).
+  function partyAnnualDue(year) { const d = new Date(Date.UTC(year + 1, 2, 1)); while ([0, 6].includes(d.getUTCDay())) d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); }
+  function periodsFor(year, running, kind) {
     const cal = CALENDARS[year];
+    if (kind === "party") {
+      // Party committees file pre-primary, pre-election and annual reports; no 48-hour reports.
+      if (cal) { const out = {}; for (const [k, p] of Object.entries(cal.local)) { out[k] = { ...p, supp: null }; if (k === "Annual") out[k].due = partyAnnualDue(year); } return out; }
+      return { "Annual": { start: `${year}-01-01`, end: `${year}-12-31`, due: partyAnnualDue(year) } };
+    }
     if (running && cal) return cal.local;
     return { "Annual": { start: `${year}-01-01`, end: `${year}-12-31`, due: annualDue(year) } };
   }
@@ -60,7 +67,9 @@
   function compute(report) {
     const P = report.period || PERIODS_2026[report.reportType] || {};
     const start = report.start || P.start, end = report.end || P.end, year = yearOf(end);
-    const ledgerFrom = report.ledgerFrom || `${year}-01-01`;   // entries before this were already counted in report.prior
+    const ledgerFrom = report.ledgerFrom || `${year}-01-01`;
+    const isParty = report.committeeType === "party";
+    const ITEMIZE_OVER = isParty ? 200 : ITEMIZE_OVER_CANDIDATE;   // regular party committees itemize over $200   // entries before this were already counted in report.prior
     const all = (report.entries || []).filter((e) => yearOf(e.date) === year || !e.date);
     const flags = [];
     const flag = (sev, ids, msg, fix, fields) => flags.push({ sev, ids: [].concat(ids || []), msg, fix, fields: fields || [] });
@@ -122,7 +131,7 @@
       if ((s === "A2" || s === "A3") && total > CORP_LABOR_LIMIT) {
         const ids = receipts.filter((e) => srcKey(e) === k).map((e) => e.id);
         const shown = (receipts.find((e) => srcKey(e) === k) || {}).name || nm;
-        flag("must_fix", ids, `${s === "A2" ? "Corporation" : "Union"} “${shown}” gave you ${money(total)} this year. The legal limit is ${money(CORP_LABOR_LIMIT)} a year, and that limit is shared across every county and local candidate they give to.`, `Refund at least ${money(total - CORP_LABOR_LIMIT)} and report the refund as a returned contribution.`);
+        flag("must_fix", ids, `${s === "A2" ? "Corporation" : "Union"} “${shown}” gave you ${money(total)} this year. The legal limit is ${money(CORP_LABOR_LIMIT)} a year, and that limit is shared across every ${isParty ? "county and local party committee" : "county and local candidate"} they give to.`, `Refund at least ${money(total - CORP_LABOR_LIMIT)} and report the refund as a returned contribution.`);
       }
     }
 
@@ -233,6 +242,6 @@
   function money(n) { return (Number(n) || 0).toLocaleString("en-US", { style: "currency", currency: "USD" }); }
   function fmt(d) { if (!d) return ""; const [y, m, dd] = d.split("-"); return `${m}/${dd}/${y.slice(2)}`; }
 
-  const api = { compute, guessCode, money, fmt, netCash, periodsFor, suppWindows, annualDue, PERIODS_2026, CALENDARS, SOURCE_SCHEDULE, ITEMIZE_OVER, OCCUPATION_AT, CORP_LABOR_LIMIT, LARGE_CONTRIB };
+  const api = { compute, guessCode, money, fmt, netCash, periodsFor, suppWindows, annualDue, partyAnnualDue, PERIODS_2026, CALENDARS, SOURCE_SCHEDULE, ITEMIZE_OVER: ITEMIZE_OVER_CANDIDATE, OCCUPATION_AT, CORP_LABOR_LIMIT, LARGE_CONTRIB };
   if (typeof module !== "undefined") module.exports = api; else root.CFA = api;
 })(typeof window !== "undefined" ? window : globalThis);

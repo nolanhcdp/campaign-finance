@@ -129,9 +129,13 @@ window.CFH = {
         <p class="hint">Your email is only used to help you if you lose your code. It's never shared or used for anything else.</p>
       </div>
       <form id="signupForm" class="signupform" novalidate>
-        <label for="su-candidate">Candidate's name<input id="su-candidate" autocomplete="name" required></label>
+        <fieldset class="su-where su-kind"><legend>What kind of committee?</legend>
+          <label class="mergeopt"><input type="radio" name="su-kind" value="candidate" checked><span>A candidate's committee</span></label>
+          <label class="mergeopt"><input type="radio" name="su-kind" value="party"><span>A party committee <small>(county or local party)</small></span></label>
+        </fieldset>
+        <label for="su-candidate"><span id="su-candidate-label">Candidate's name</span><input id="su-candidate" autocomplete="name" required></label>
         <label for="su-committee">Committee name<small>as on your CFA-1, like “Friends of Pat Smith”</small><input id="su-committee" required></label>
-        <label for="su-office">Office you're running for<small>include the district, if there is one</small><input id="su-office"></label>
+        <label for="su-office" id="su-office-wrap">Office you're running for<small>include the district, if there is one</small><input id="su-office"></label>
         <label for="su-email">Email<input id="su-email" type="email" autocomplete="email" required></label>
         <fieldset class="su-where"><legend>Where do you file your reports?</legend>
           <label class="mergeopt"><input type="radio" name="su-where" value="county" checked><span>With my county election board</span></label>

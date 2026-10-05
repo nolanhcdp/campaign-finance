@@ -13,8 +13,8 @@ export async function POST(request) {
   try {
     const b = await request.json().catch(() => ({}));
     if (b.website) return json({ error: "Something went wrong. Try again." }, 400);       // honeypot
-    const f = { candidate: clean(b.candidate), committee: clean(b.committee), office: clean(b.office), county: clean(b.county, 40), email: clean(b.email, 160).toLowerCase(), phone: clean(b.phone, 30) };
-    if (!f.candidate || !f.committee || !f.county) return json({ error: "Fill in your name, committee name and county." }, 400);
+    const f = { committeeType: b.committeeType === "party" ? "party" : "candidate", candidate: clean(b.candidate), committee: clean(b.committee), office: clean(b.office), county: clean(b.county, 40), email: clean(b.email, 160).toLowerCase(), phone: clean(b.phone, 30) };
+    if (!f.candidate || !f.committee || !f.county) return json({ error: "Fill in your name, committee name and county." }, 400);   // for a party committee "candidate" carries the contact's name
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) return json({ error: "That email address doesn't look right." }, 400);
 
     if (process.env.TURNSTILE_SECRET_KEY) {
@@ -29,7 +29,7 @@ export async function POST(request) {
 
     let code; for (let i = 0; i < 5; i++) { code = newCode(); if (!(await draftExists(code))) break; }
     const now = Date.now();
-    const signup = { email: f.email, phone: f.phone, county: f.county, at: now, how: "self" };
+    const signup = { email: f.email, phone: f.phone, county: f.county, at: now, how: "self", committeeType: f.committeeType, contact: f.candidate };
     await saveDraft(code, { data: null, rev: 0, createdAt: now, updatedAt: now, signup },
       { candidate: f.candidate, committee: f.committee, office: f.office, county: f.county, email: f.email, how: "self", entries: 0, step: "", mustFix: null, createdAt: now, updatedAt: now });
     return json({ code });

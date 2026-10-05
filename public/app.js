@@ -69,6 +69,7 @@ let lastAskId = null;    // the answer currently shown in the question box
 let showAllFlags = false;
 let showHistory = false;
 
+const isParty = () => S && S.about && S.about.committeeType === "party";
 function blank() {
   return {
     v: 2, step: "add", cur: null,
@@ -126,7 +127,7 @@ function planFor(Y) { return S.year[Y]?.plan || null; }
 // Every report the committee owes in a year, merged with the ones already started or filed.
 function reportsForYear(Y) {
   const plan = planFor(Y), running = plan ? plan.status === "running" : !!CFA.CALENDARS[Y];
-  const periods = CFA.periodsFor(+Y, running);
+  const periods = CFA.periodsFor(+Y, running, isParty() ? "party" : "candidate");
   const o = openingFor(Y);
   const out = [];
   for (const [type, P] of Object.entries(periods)) {
@@ -181,7 +182,7 @@ function startDemo() {
   showApp();
   if (wantsImport) { openReport(S.reports.find((r) => r.status === "open").id, "add"); importSampleSheet(true); }
 }
-// One-click import of the sample spreadsheet, so visitors can watch a messy sheet get sorted.
+// One-click import of the sample spreadsheet, so visitors can watch a spreadsheet get sorted.
 async function importSampleSheet(thenCheck) {
   try {
     const blob = await (await fetch("/samples/messy-donations.xlsx")).blob();
@@ -287,20 +288,31 @@ async function wireSignup() {
   }
 }
 $("#toSignup")?.addEventListener("click", (e) => { e.preventDefault(); $("#signup").scrollIntoView({ behavior: "smooth" }); setTimeout(() => $("#su-candidate").focus(), 400); });
+document.addEventListener("change", (e) => {
+  if (e.target.name === "su-kind") {
+    const party = e.target.value === "party";
+    $("#su-candidate-label").textContent = party ? "Your name" : "Candidate's name";
+    $("#su-office-wrap").hidden = party;
+    document.querySelector('.su-where:not(.su-kind)').hidden = party;   // party committees file with the county
+  }
+});
 document.addEventListener("change", (e) => { if (e.target.name === "su-where") $("#su-county-label").textContent = e.target.value === "state" ? "County you live in" : "County where you file"; });
 $("#signupForm")?.addEventListener("submit", async (e) => {
   e.preventDefault(); const err = $("#su-err"); err.hidden = true;
   const v = (id) => ($("#su-" + id)?.value || "").trim();
-  const body = { candidate: v("candidate"), committee: v("committee"), office: v("office"), county: v("county"), email: v("email"), phone: v("phone"), website: v("website"),
+  const kind = document.querySelector('input[name="su-kind"]:checked')?.value === "party" ? "party" : "candidate";
+  const body = { committeeType: kind, candidate: v("candidate"), committee: v("committee"), office: v("office"), county: v("county"), email: v("email"), phone: v("phone"), website: v("website"),
     token: document.querySelector('#su-turnstile input[name="cf-turnstile-response"]')?.value || "" };
-  if (!body.candidate || !body.committee || !body.county || !body.email) { err.textContent = "Fill in the candidate's name, committee name, county and email."; err.hidden = false; return; }
+  if (!body.candidate || !body.committee || !body.county || !body.email) { err.textContent = `Fill in ${kind === "party" ? "your name" : "the candidate's name"}, committee name, county and email.`; err.hidden = false; return; }
   const btn = $("#su-btn"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Setting up…';
   try {
     const r = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json(); if (!r.ok) throw new Error(j.error || "Something went wrong.");
     CODE = j.code; REV = 0; S = blank(); S.step = "about";
-    const where = document.querySelector('input[name="su-where"]:checked')?.value === "state" ? "state" : "county";
-    Object.assign(S.about, { candidate: body.candidate, committee: body.committee, office: body.office, county: body.county, phone: body.phone, filesWith: where });
+    const where = kind === "party" ? "county" : document.querySelector('input[name="su-where"]:checked')?.value === "state" ? "state" : "county";
+    Object.assign(S.about, kind === "party"
+      ? { committeeType: "party", candidate: "", contact: body.candidate, committee: body.committee, office: "", county: body.county, phone: body.phone, filesWith: where }
+      : { committeeType: "candidate", candidate: body.candidate, committee: body.committee, office: body.office, county: body.county, phone: body.phone, filesWith: where });
     history.replaceState(null, "", "/r/" + CODE);
     showApp(); changed(); showCode(true);
   } catch (x) { err.textContent = x.message; err.hidden = false; window.turnstile?.reset?.(); }
@@ -340,7 +352,7 @@ function buildReport(rep = curReport()) {
   const a = S.about, Y = yearOf(rep.end);
   const o = openingFor(Y) || { ledgerFrom: `${Y}-01-01`, cashBegin: 0, cashJan1: 0, rec15aB: 0, rec15bB: 0, exp17aB: 0, exp17bB: 0 };
   return {
-    reportType: rep.type, start: rep.start, end: rep.end, period: { start: rep.start, end: rep.end, due: rep.due, supp: rep.supp }, ledgerFrom: o.ledgerFrom,
+    reportType: rep.type, start: rep.start, end: rep.end, committeeType: isParty() ? "party" : "candidate", period: { start: rep.start, end: rep.end, due: rep.due, supp: rep.supp }, ledgerFrom: o.ledgerFrom,
     fileNumber: a.fileNumber, amendment: !!rep.amendment, treasurerTitle: a.treasurerTitle, treasurer: a.treasurer, today: today(),
     committee: { name: a.committee, acronym: a.acronym, phone: a.phone, street: a.street, city: a.city, state: a.state, zip: a.zip, party: a.party },
     candidate: { name: a.candidate, party: a.party, office: a.office, county: a.county },
@@ -370,7 +382,7 @@ function results(rep = curReport()) {
     if (e.codeGuessed && e.code && KINDS[e.kind]?.group === "out") extra.push({ sev: "check", ids: [e.id], msg: `We coded the ${money(e.amount)} payment to ${e.name || "this vendor"} as O (operations) because “${e.purpose || "no purpose given"}” didn't tell us more.`, fix: "Change the code if it was advertising (A), a fundraiser cost (F) or a gift to another campaign (C).", fields: ["code"] });
   }
   const a = S.about;
-  for (const [k, l] of [["committee", "committee name"], ["candidate", "candidate name"], ["office", "office sought"], ["treasurer", "treasurer's name"], ["street", "mailing address"], ["city", "city"], ["zip", "ZIP code"]])
+  for (const [k, l] of [["committee", "committee name"], ...(isParty() ? [] : [["candidate", "candidate name"], ["office", "office sought"]]), ["treasurer", "treasurer's name"], ["street", "mailing address"], ["city", "city"], ["zip", "ZIP code"]])
     if (!a[k]) extra.push({ sev: "must_fix", ids: [], msg: `The cover page is missing the ${l}.`, fix: "Fill it in on the first step.", step: "about" });
   if (rep.type === "Final" && Math.abs(C.lines.l18A) > 0.009) extra.push({ sev: "must_fix", ids: [], msg: `A final report has to end with $0 in the account; this one ends at ${money(C.lines.l18A)}.`, fix: "Give the surplus to a party committee, another candidate, or a charity (or return it to donors), enter that payment, and the balance will reach zero. Then close the bank account." });
   if (rep.type === "Final" && Math.abs(C.lines.l19) > 0.009) extra.push({ sev: "must_fix", ids: [], msg: `A committee can't close while it still owes ${money(C.lines.l19)}.`, fix: "Pay the debt (or have it forgiven and reported as an in-kind contribution), then enter the payment." });
@@ -441,12 +453,13 @@ const VIEWS = {
 about() {
   const rep = curReport();
   const hn = (S.helperNotes || []).length ? `<div class="panel" style="border-color:var(--warn)"><h3>Notes from your helper</h3><p class="muted" style="margin:4px 0 8px">Your April report (or statement of organization) was read in for you. Check these:</p><ul style="margin:0;padding-left:20px">${S.helperNotes.slice(0, 6).map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : "";
-  return `<div><h2>About your campaign</h2><p class="lead">This goes on the cover page of every report. Use the committee name and file number from your CFA-1 statement of organization.</p></div>${hn}
+  return `<div><h2>About your campaign</h2><p class="lead">This goes on the cover page of every report. Use the committee name and file number from your ${isParty() ? "CFA-3" : "CFA-1"} statement of organization.</p></div>${hn}
   <div class="panel grid">
     ${field("about", "committee", "Committee name", "exactly as on your CFA-1")}
     ${field("about", "fileNumber", S.about.filesWith === "state" ? "Committee ID" : "File number", S.about.filesWith === "state" ? "assigned by the Election Division; it's on your CFA-1" : "from the county election board")}
-    ${field("about", "candidate", "Candidate's full name", "include any nickname on the ballot")}
-    ${field("about", "office", "Office sought", "include district, like “County Council, District 2”")}
+    <label for="f-committeeType">Type of committee<select id="f-committeeType" data-bind="about.committeeType"><option value="candidate" ${!isParty() ? "selected" : ""}>Candidate's committee</option><option value="party" ${isParty() ? "selected" : ""}>Regular party committee (county or local party)</option></select></label>
+    ${isParty() ? "" : field("about", "candidate", "Candidate's full name", "include any nickname on the ballot")}
+    ${isParty() ? "" : field("about", "office", "Office sought", "include district, like “County Council, District 2”")}
     ${field("about", "party", "Party", "or “Independent candidate”")}
     ${field("about", "county", "County of residence")}
     ${field("about", "treasurer", "Treasurer's name")}
@@ -515,7 +528,7 @@ dash() {
   const attention = items.length ? `<div class="flags">${items.map((i) => `<div class="flag ${i.cls}"><div class="bar"></div><div><b>${esc(i.msg)}</b></div><div class="row">${i.btn}</div></div>`).join("")}</div>` : "";
   // The yearly question.
   const plan = planFor(Y);
-  const planBox = !plan && o ? `<div class="panel type"><h3>What's happening with this committee in ${Y}?</h3>
+  const planBox = !plan && o && !isParty() ? `<div class="panel type"><h3>What's happening with this committee in ${Y}?</h3>
     <div class="choice">
       <button type="button" data-plan="running"><b>Running for office in ${Y}</b><small>Pre-primary, pre-election and 48-hour reports apply</small></button>
       <button type="button" data-plan="not"><b>Not on the ballot in ${Y}</b><small>Only the annual report, due next January</small></button>
@@ -690,7 +703,7 @@ print() {
     <p class="hint" style="margin:0">This file follows the Election Division's published import layout. If the system rejects it, note the message it gives and tell whoever sent you this tool.${!S.about.fileNumber ? " Your Committee ID is missing on the first step; the state's system needs it." : ""}</p>`
   : `<ol>
     <li>Print every page.</li>
-    <li>The treasurer signs and dates the summary page. If the candidate isn't the treasurer, the candidate signs too.</li>
+    <li>The treasurer signs and dates the summary page.${isParty() ? "" : " If the candidate isn't the treasurer, the candidate signs too."}</li>
     <li>Turn it in to the county election board${county ? ` (${esc(county.office)}${county.address ? ", " + esc(county.address) : ""})` : " (the Clerk's office)"} by <b>noon on ${fmtDate(C.due)}</b>. ${county?.email ? `They accept email at <b>${esc(county.email)}</b>.` : "Ask the Clerk whether they take email or fax."} A mailed report counts only when it arrives, not by postmark.</li>
     <li>Keep receipts for every expense over $25 for three years.</li></ol>${county?.note ? `<p class="hint" style="margin:0">${esc(county.note)}</p>` : ""}`}</div>`;
   const filedBox = `<div class="panel"><h3>After you file</h3><p class="muted" style="margin:4px 0 10px">Mark it filed so your dashboard knows, and so the next report starts from the right numbers.</p>
@@ -1278,6 +1291,7 @@ function saveFile(blob, name) { const a = document.createElement("a"); a.href = 
 const RECEIPT_KINDS = ["contribution", "inkind", "loan", "interest", "misc"];
 const srcKeyOf = (e) => (e.personKey || nameKey(e.name)) + "|" + (CFA.SOURCE_SCHEDULE[e.source] || "A5");
 function cfa11Items() {
+  if (isParty()) return [];   // regular party committees don't file CFA-11 reports
   const out = [], t = today();
   for (const Y of committeeYears()) for (const w of CFA.suppWindows(+Y)) {
     const win = { ...w, id: `${w.report}-${Y}` };
@@ -1343,7 +1357,7 @@ function startFinal() {
   startReport("Final", start, end, due.toLocaleDateString("en-CA"), null);
 }
 const daysUntil = (d) => Math.ceil((new Date(d + "T12:00:00") - Date.now()) / 864e5);
-const inSuppWindow = (d) => !!d && CFA.suppWindows(+yearOf(d)).some((w) => d >= w.start && d <= w.end);
+const inSuppWindow = (d) => !isParty() && !!d && CFA.suppWindows(+yearOf(d)).some((w) => d >= w.start && d <= w.end);
 const nextDay = (d) => { const x = new Date(d + "T12:00:00"); x.setDate(x.getDate() + 1); return x.toLocaleDateString("en-CA"); };
 
 // ---------- Donors and payees on file ----------
